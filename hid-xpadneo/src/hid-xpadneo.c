@@ -377,6 +377,7 @@ static void xpadneo_welcome_rumble(struct hid_device *hdev)
 {
 	struct xpadneo_devdata *xdata = hid_get_drvdata(hdev);
 	struct ff_report ff_pck;
+	u8 save, lsave, rsave;
 
 	memset(&ff_pck.ff, 0, sizeof(ff_pck.ff));
 
@@ -399,6 +400,7 @@ static void xpadneo_welcome_rumble(struct hid_device *hdev)
 	 * that doesn't compromise the testing nature of this
 	 */
 
+	save = ff_pck.ff.magnitude_weak;
 	if (xdata->quirks & XPADNEO_QUIRK_NO_MOTOR_MASK)
 		ff_pck.ff.magnitude_weak = 40;
 	else if (xdata->quirks & XPADNEO_QUIRK_REVERSE_MASK)
@@ -408,7 +410,6 @@ static void xpadneo_welcome_rumble(struct hid_device *hdev)
 	hid_hw_output_report(hdev, (u8 *)&ff_pck, sizeof(ff_pck));
 	mdelay(300);
 	if (xdata->quirks & XPADNEO_QUIRK_NO_PULSE) {
-		u8 save = ff_pck.ff.magnitude_weak;
 		ff_pck.ff.magnitude_weak = 0;
 		hid_hw_output_report(hdev, (u8 *)&ff_pck, sizeof(ff_pck));
 		ff_pck.ff.magnitude_weak = save;
@@ -416,6 +417,7 @@ static void xpadneo_welcome_rumble(struct hid_device *hdev)
 	ff_pck.ff.enable = 0;
 	mdelay(30);
 
+	save = ff_pck.ff.magnitude_strong;
 	if (xdata->quirks & XPADNEO_QUIRK_NO_MOTOR_MASK)
 		ff_pck.ff.magnitude_strong = 20;
 	else if (xdata->quirks & XPADNEO_QUIRK_REVERSE_MASK)
@@ -425,7 +427,6 @@ static void xpadneo_welcome_rumble(struct hid_device *hdev)
 	hid_hw_output_report(hdev, (u8 *)&ff_pck, sizeof(ff_pck));
 	mdelay(300);
 	if (xdata->quirks & XPADNEO_QUIRK_NO_PULSE) {
-		u8 save = ff_pck.ff.magnitude_strong;
 		ff_pck.ff.magnitude_strong = 0;
 		hid_hw_output_report(hdev, (u8 *)&ff_pck, sizeof(ff_pck));
 		ff_pck.ff.magnitude_strong = save;
@@ -433,6 +434,8 @@ static void xpadneo_welcome_rumble(struct hid_device *hdev)
 	ff_pck.ff.enable = 0;
 	mdelay(30);
 
+	lsave = ff_pck.ff.magnitude_left;
+	rsave = ff_pck.ff.magnitude_right;
 	if ((xdata->quirks & XPADNEO_QUIRK_NO_TRIGGER_RUMBLE) == 0) {
 		if (xdata->quirks & XPADNEO_QUIRK_NO_MOTOR_MASK) {
 			ff_pck.ff.magnitude_left = 10;
@@ -445,8 +448,6 @@ static void xpadneo_welcome_rumble(struct hid_device *hdev)
 		hid_hw_output_report(hdev, (u8 *)&ff_pck, sizeof(ff_pck));
 		mdelay(300);
 		if (xdata->quirks & XPADNEO_QUIRK_NO_PULSE) {
-			u8 lsave = ff_pck.ff.magnitude_left;
-			u8 rsave = ff_pck.ff.magnitude_right;
 			ff_pck.ff.magnitude_left = 0;
 			ff_pck.ff.magnitude_right = 0;
 			hid_hw_output_report(hdev, (u8 *)&ff_pck, sizeof(ff_pck));
@@ -832,6 +833,10 @@ static int xpadneo_raw_event(struct hid_device *hdev, struct hid_report *report,
 
 	/* XBE2: track the current controller settings */
 	if (report->id == 1 && reportsize >= 20) {
+		if (!(xdata->quirks & XPADNEO_QUIRK_USE_HW_PROFILES)) {
+			hid_info(hdev, "mapping profiles detected\n");
+			xdata->quirks |= XPADNEO_QUIRK_USE_HW_PROFILES;
+		}
 		if (reportsize == 55) {
 			hid_notice_once(hdev,
 					"detected broken XBE2 v1 packet format, please update the firmware");
@@ -864,12 +869,17 @@ static int xpadneo_input_configured(struct hid_device *hdev, struct hid_input *h
 	case HID_GD_KEYBOARD:
 		hid_info(hdev, "keyboard detected\n");
 		xdata->keyboard = hi->input;
+
+		/* do not report bogus keys as part of the keyboard */
+		__clear_bit(KEY_UNKNOWN, xdata->keyboard->keybit);
+
 		return 0;
 	case HID_CP_CONSUMER_CONTROL:
 		hid_info(hdev, "consumer control detected\n");
 		xdata->consumer = hi->input;
 		return 0;
 	case 0xFF000005:
+		/* FIXME: this is no longer in the current firmware */
 		hid_info(hdev, "mapping profiles detected\n");
 		xdata->quirks |= XPADNEO_QUIRK_USE_HW_PROFILES;
 		return 0;
@@ -907,12 +917,15 @@ static int xpadneo_input_configured(struct hid_device *hdev, struct hid_input *h
 
 	/* do not report the keyboard buttons as part of the gamepad */
 	__clear_bit(BTN_SHARE, xdata->gamepad->keybit);
+	__clear_bit(KEY_RECORD, xdata->gamepad->keybit);
+	__clear_bit(KEY_UNKNOWN, xdata->gamepad->keybit);
 
-	/* add paddles as part of the gamepad */
-	__set_bit(BTN_PADDLES(0), xdata->gamepad->keybit);
-	__set_bit(BTN_PADDLES(1), xdata->gamepad->keybit);
-	__set_bit(BTN_PADDLES(2), xdata->gamepad->keybit);
-	__set_bit(BTN_PADDLES(3), xdata->gamepad->keybit);
+	/* ensure all four paddles exist as part of the gamepad */
+	if (test_bit(BTN_PADDLES(0), xdata->gamepad->keybit)) {
+		__set_bit(BTN_PADDLES(1), xdata->gamepad->keybit);
+		__set_bit(BTN_PADDLES(2), xdata->gamepad->keybit);
+		__set_bit(BTN_PADDLES(3), xdata->gamepad->keybit);
+	}
 
 	return 0;
 }
