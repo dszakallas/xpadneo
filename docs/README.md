@@ -46,18 +46,31 @@ As of xpadneo v0.10, we require kernel 4.18 or later to utilize `HID_QUIRK_INPUT
 multiple sub-devices to fix problems and incompatibilities at several layers.
 
 
-### SDL 2.0.12 Breakage
+### SDL2 2.28 Compatibility
 
-As of SDL 2.0.12, SDL introduced a new HIDAPI which can read HID devices in raw mode, bypassing the drivers. Due to
-the way SDL works, and because xpadneo exposes hidraw devices as user-readable, SDL may see wrong button mappings
-because it may make wrong assumptions about the protocol mode of Xbox and compatible controllers. If you see wrong
-button mappings / missing buttons in SDL applications, or rumble does not work, you may need to turn off this behavior
-by setting an environment variable in your profile: `SDL_JOYSTICK_HIDAPI=0`
+Thanks to [@slouken](https://github.com/slouken) from SDL2, xpadneo mappings are now auto-detected in the upcoming
+SDL2 2.28 release. This will fix long-standing problems with Steam Input and SDL2 games. With this release, we will
+also have full paddle support.
 
-Observed problems:
+If you still see problems, ensure that you didn't create custom controllerdb entries. See also:
+- https://github.com/atar-axis/xpadneo/issues/428
+- https://github.com/libsdl-org/SDL/commit/9567989eb3ce9c858f0fe76806c5ccad69da89ba
+- https://github.com/libsdl-org/SDL/commit/0f4b15e16b7f07a46db6dc8e651f8c1849d658c5
 
-* Wrong mappings when using newer SDL2 versions, should be fixed by latest xpadneo
-* Rumble doesn't work at all, needs to be fixed by SDL2
+Known issues:
+- The Share button will currently not be recognized by SDL2, scheduled to be fixed in xpadneo v0.11
+
+
+### Quirks by Design
+
+With BLE firmware, all models switched to a unified HID report descriptor, only the XBE2 controller identifies with
+PID 0x0B22 while the other models identify with PID 0x0B13. This has some known consequences:
+
+- All non-XBE2 controllers will claim to have a Share button no matter if it physically exists. As HID doesn't report
+  the internal model number, xpadneo cannot fix it currently. The button is currently mapped to F12, so this has no
+  consequences.
+- All XBE2 controllers will claim to have a full keyboard and the Share button is actually the Profile button. Since
+  Share is currently mapped to F12, this will have no consequences.
 
 
 ## Advantages of this Driver
@@ -71,6 +84,7 @@ Observed problems:
 * Offers a consistent mapping, even if the Gamepad was paired to Windows/Xbox before, and independent of software
   layers (SDL2, Stadia via Chrome Gamepad API, etc)
 * Working Select, Start, Mode buttons
+* Working paddles (buttons on the backside of the controller)
 * Correct Axis Range (signed, important for e.g. RPCS3)
 * Supports Battery Level Indication (including the Play 'n Charge Kit)
   ![Battery Level Indication](./img/battery_support.png)
@@ -105,9 +119,9 @@ This controller uses native profile switching support (see below).
 
 ### Xbox Series X|S Wireless Controller
 
-Full support for the Xbox Series X|S controller is present including the share button. This is currently mapped
-to keyboard event `KEY_RECORD` and may not work at all for any purpose. Thus, this implementation details may
-change during one of the next updates. This controller uses emulated profile switching support (see below).
+Full support for the Xbox Series X|S controller is present including the share button. This is currently statically
+mapped to keyboard event `KEY_F12` to take screenshots with Steam. It will be configurable in the future. This
+controller uses emulated profile switching support (see below).
 
 This controller uses BLE (Bluetooth low energy) and can only be supported if your Bluetooth dongle also supports BLE.
 
@@ -137,7 +151,7 @@ support has been added for these controllers and broken mapping of previously ve
 applied. See also: [SDL](https://atar-axis.github.io/xpadneo/#troubleshooting#sdl).
 
 
-## GuliKit KingKong Controller Family
+### GuliKit KingKong Controller Family
 
 This driver supports the GuliKit King Kong controller family, the driver was tested with model NS09 (using firmware
 v2.0) but should work just fine for the older models, too. If in doubt, follow the firmware upgrade guides on the
@@ -176,8 +190,9 @@ The driver support native profile switching for the Xbox Elite Series 2 controll
 finalized yet:
 
 - The default profile (no LED) exposes the paddles as extra buttons.
-- The other three profiles behave the same way currently, and there is no support for configuring them. This may be
-  different if profiles have been configured in Windows already, that is still untested.
+- The other three profiles behave the same way by default. While there is no support for modifying them currently,
+  configurations set in the [Xbox Accessories app (Windows only)](https://apps.microsoft.com/store/detail/xbox-accessories/9NBLGGH30XJ3)
+  will carry over and operate as intended.
 
 
 ### Emulated Profile Switching Support
