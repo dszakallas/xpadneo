@@ -49,8 +49,16 @@ MODULE_PARM_DESC(disable_deadzones,
 static bool param_xpad_emulation = 0;
 module_param_named(xpad_emulation, param_xpad_emulation, bool, 0444);
 MODULE_PARM_DESC(xpad_emulation,
-		 "(bool) Enable emulation of original Xpad360 USB controller, disables most advanced features. "
-		 "0: disable, 1: enable.");
+                 "(bool) Enable emulation of original Xpad360 USB controller, "
+                 "disables most advanced features. "
+                 "0: disable, 1: enable.");
+
+static bool param_disable_profile_switch = 0;
+module_param_named(disable_profile_switch, param_disable_profile_switch, bool,
+                   0444);
+MODULE_PARM_DESC(disable_profile_switch,
+                 "(bool) Disable profile switch functionality and report Xbox button normally. "
+                 "0: disable, 1: enable.");
 
 static struct {
 	char *args[17];
@@ -969,7 +977,10 @@ static int xpadneo_event(struct hid_device *hdev, struct hid_field *field,
 	} else if (param_xpad_emulation && (usage->type == EV_KEY) && (usage->code == BTN_MODE)) {
 		/* emulating Xpad360 */
 		return 0;
-	} else if ((usage->type == EV_KEY) && (usage->code == BTN_XBOX)) {
+        } else if (param_disable_profile_switch && (usage->type == EV_KEY) && (usage->code == BTN_XBOX)) {
+		input_report_key(gamepad, BTN_XBOX, value & 1 ? 1 : 0);
+		goto stop_processing;
+        } else if (!param_disable_profile_switch && (usage->type == EV_KEY) && (usage->code == BTN_XBOX)) {
 		/*
 		 * Handle the Xbox logo button: We want to cache the button
 		 * down event to allow for profile switching. The button will
